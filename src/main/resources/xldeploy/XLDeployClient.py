@@ -203,3 +203,8 @@ class XLDeployClient(object):
         root = ET.fromstring(queryTask_response.getResponse())
         items = root.findall('ci')
         return items[len(items)-1].attrib['ref']
+
+    def getTaskInfo(self, taskId):
+        infoTask = 'deployit/task/%s/step' % taskId
+        infoTask_response = self.httpRequest.get(infoTask,contentType='application/xml')
+        return infoTask_response.getResponse()
