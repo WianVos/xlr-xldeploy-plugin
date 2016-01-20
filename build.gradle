@@ -26,7 +26,7 @@ apply plugin: 'co.riiid.gradle'
 println 'build/libs/xlr-xldeploy-plugin-${getVersionName}.jar'
 github {
     owner = 'wianvos'
-    repo = 'lm-wlp-plugin'
+    repo = 'xlr-xldeploy-plugin'
     token = "$github_token"
     tagName = getVersionName()
     targetCommitish = 'master'
