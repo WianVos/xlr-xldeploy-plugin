@@ -1,18 +1,37 @@
 buildscript {
-  repositories {
-    jcenter()
-  }
-  dependencies {
-    classpath "nl.javadude.gradle.plugins:license-gradle-plugin:0.11.0"
-  }
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'co.riiid:gradle-github-plugin:0.3.1'
+        classpath 'net.saliman:gradle-properties-plugin:1.4.4'
+    }
 }
 
-version="1.1.2"
+def getVersionName = { ->
+    def stdout = new ByteArrayOutputStream()
+    exec {
+        commandLine 'git', 'describe', '--tags'
+        standardOutput = stdout
+    }
+    return stdout.toString().trim()
+}
 
-apply plugin: "com.github.hierynomus.license"
+version=getVersionName()
+apply plugin: 'net.saliman.properties'
 apply plugin: 'java'
-
-license {
-    header rootProject.file('src/main/license/xebialabs_community.license')
-    strictCheck true
+apply plugin: 'idea'
+apply plugin: 'co.riiid.gradle'
+println 'build/libs/xlr-xldeploy-plugin-${getVersionName}.jar'
+github {
+    owner = 'wianvos'
+    repo = 'lm-wlp-plugin'
+    token = "$github_token"
+    tagName = getVersionName()
+    targetCommitish = 'master'
+    name = getVersionName()
+    assets = [
+            "build/libs/xlr-xldeploy-plugin-"+getVersionName()+".jar"
+    ]
 }
