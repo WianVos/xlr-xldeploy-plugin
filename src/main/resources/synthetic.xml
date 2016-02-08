@@ -13,6 +13,10 @@
         <property name="notifyOnSuccess" category="input" label="Notify on success" kind="string" default="" />
         <property name="notifyOnFailure" category="input" label="Notify on failure" kind="string" default="" />
         <property name="enableNotification" category="input" label="enable notifications" kind="boolean" default="false" />
+        <property name="failureNotificationSubject" category="input" required="false" label="failure notification subject text" kind="string" />
+        <property name="failureNotificationBody" category="input" required="false" label="failure notification body text" kind="string" size="large"/>
+        <property name="successNotificationSubject" category="input" required="false" label="success notification subject text" kind="string" />
+        <property name="successNotificationBody" category="input" required="false" label="success notification body text" kind="string" size="large"/>
     </type>
 
     <type type="xldeploy.NotificationEmailServer" extends="xlrelease.Configuration">

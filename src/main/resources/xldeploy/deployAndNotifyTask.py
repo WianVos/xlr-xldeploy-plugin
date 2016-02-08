@@ -14,21 +14,16 @@ from email import Encoders
 
 from xldeploy.XLDeployClientUtil import XLDeployClientUtil
 
-def send_email(message, subject, succes=True, attachement=None):
+def do_email(body, subject, recipients, attachement=None):
 
     sender = mailServer['senderAddress']
 
-    if succes:
-        receivers = notifyOnSuccess
-    else:
-        receivers = notifyOnFailure
-
 
     msg = MIMEMultipart('alternative')
-    msg.attach(MIMEText(message, 'html'))
+    msg.attach(MIMEText(body, 'html'))
     msg['Subject'] = subject
     msg['From'] = sender
-    msg['To'] = receivers
+    msg['To'] = recipients
 
     if attachement:
         part = MIMEBase('application', "octet-stream")
@@ -39,94 +34,112 @@ def send_email(message, subject, succes=True, attachement=None):
 
         msg.attach(part)
 
+    try:
+        smtpObj = smtplib.SMTP(mailServer['smtpHost'], mailServer['smtpPort'])
+        smtpObj.starttls()
+        smtpObj.login(mailServer['username'], mailServer['password'])
+        smtpObj.sendmail(sender, recipients, msg.as_string())
+        smtpObj.quit()
+        print "Successfully notified users via email"
+        return True
+    except Exception as e:
+        print "unable to send email to %s" % recipients
+        print e.errno
+        print e.strerror
+        return False
 
-    smtpObj = smtplib.SMTP(mailServer['smtpHost'], mailServer['smtpPort'])
-    smtpObj.starttls()
-    smtpObj.login(mailServer['username'], mailServer['password'])
-    smtpObj.sendmail(sender, receivers, msg.as_string())
-    smtpObj.quit()
-    print "Successfully notified users via email"
-    return True
+def send_email(taskId = None, success=True, attachDetails=True):
+    """
+    this function defines the message to be sent to the appropriate list of recipients in case of either failure or success
+    :param success: Boolean
+    :param attachDetails: Boolean
+    :return: True upon successfull send False if not so much ..
 
-def send_success_mail(deploymentPackage, environment):
+    """
     ts = datetime.datetime.fromtimestamp(timestamp()).strftime('%Y-%m-%d %H:%M:%S')
-    subject = "XL-Release: Succesfull deployment of %s onto %s happend at %s" % (deploymentPackage, environment, ts )
-    message = """
-      <html>
-        <head></head>
-            <body>
-                <p>Succesfull deployment of %s onto %s at %s <br>
-                </p>
-            </body>
-        </html>
-    """ % (deploymentPackage, environment, ts )
-    send_email(message, subject)
+    subject = None
+    body = None
+    recipients = None
 
-def send_failure_mail(deploymentPackage, environment, taskId = None):
-    ts = datetime.datetime.fromtimestamp(timestamp()).strftime('%Y-%m-%d %H:%M:%S')
-    subject = "XL-Release: Deployment of %s onto %s FAILED at %s" % (deploymentPackage, environment, ts )
-    message = """
-      <html>
-        <head></head>
-            <body>
-                <p>Deployment of <b>%s</b> onto <b>%s</b> FAILED at <b>%s</b> <br>
-                But here is a nice pink pony to cheer u up
-                </p>
-            </body>
-        </html>
-    """ % (deploymentPackage, environment, ts )
+    if success:
+        try:
+            subject = successNotificationSubject
+            body = successNotificationBody
+            recipients = notifyOnSuccess
+        except ValueError:
+            print "not all needed parameters where set on the email task"
+    else:
+        try:
+            subject = failureNotificationSubject
+            body = failureNotificationBody
+            recipients = notifyOnFailure
+        except ValueError:
+            print "not all needed parameters where set on the email task"
 
-    attachmentText = None
+    body = """
+        <html>
+            <head></head>
+                <body>
+                    <p>%s<br>
+                    </p>
+                </body>
+        </html>
+    """ % body
 
     if taskId:
-        attachmentText = xldClient.getTaskInfo(taskId)
+        attachementText =  xldClient.getTaskInfo(taskId)
+        if attachDetails:
+            return do_email(body, subject, recipients, attachmentText)
 
-    send_email(message, subject, False, attachmentText)
+    return do_email(body, subject, recipients)
 
 
 def timestamp():
     return time.time()
 
-xldClient = XLDeployClientUtil.createXLDeployClient(xldeployServer, username, password)
-
-deployment = None
-if xldClient.deploymentExists(deploymentPackage, environment):
-    print "Upgrading deployment \n"
-    deployment = xldClient.deploymentPrepareUpdate(deploymentPackage,environment)
-else:
-    print "Creating initial deploy \n"
-    deployment = xldClient.deploymentPrepareInitial(deploymentPackage, environment)
-
-# Mapping deployables to the target environment
-print "Mapping all deployables \n"
-deployment = xldClient.deployment_prepare_deployeds(deployment, orchestrators, deployedApplicationProperties, deployedProperties)
-
-# deploymentProperties + configure orchestrators
-# print "DEBUG: Deployment description is now: %s" % deployment
-# Validating the deployment
-print "Creating a deployment task \n"
-taskId = xldClient.get_deployment_task_id(deployment)
-
-print "Execute task with id: %s" % taskId
-taskState = xldClient.invoke_task_and_wait_for_result(taskId, pollingInterval, numberOfPollingTrials, continueIfStepFails, numberOfContinueRetrials)
-
-if taskState in ('DONE','EXECUTED'):
-    print "Deployment ended in %s \n" % taskState
-    xldClient.archiveTask(taskId)
-    send_success_mail(deploymentPackage, environment)
-    sys.exit(0)
-
-# rollbackOnError
-if rollbackOnError and taskState in ('FAILED', 'STOPPED'):
-    print "Going to rollback \n"
-    xldClient.stopTask(taskId)
-    rollBackTaskId = xldClient.deploymentRollback(taskId)
-    taskState = xldClient.invoke_task_and_wait_for_result(rollBackTaskId, pollingInterval, numberOfPollingTrials, continueIfStepFails, numberOfContinueRetrials)
-    xldClient.archiveTask(rollBackTaskId)
-    send_failure_mail(deploymentPackage, environment,taskId)
-    sys.exit(1)
-elif taskState in ('FAILED', 'STOPPED'):
-    print "Task failed, rollback not enabled. \n"
-    xldClient.cancelTask(taskId)
-    send_failure_mail(deploymentPackage, environment, taskId)
-    sys.exit(1)
+try:
+    xldClient = XLDeployClientUtil.createXLDeployClient(xldeployServer, username, password)
+    
+    deployment = None
+    if xldClient.deploymentExists(deploymentPackage, environment):
+        print "Upgrading deployment \n"
+        deployment = xldClient.deploymentPrepareUpdate(deploymentPackage,environment)
+    else:
+        print "Creating initial deploy \n"
+        deployment = xldClient.deploymentPrepareInitial(deploymentPackage, environment)
+    
+    # Mapping deployables to the target environment
+    print "Mapping all deployables \n"
+    deployment = xldClient.deployment_prepare_deployeds(deployment, orchestrators, deployedApplicationProperties, deployedProperties)
+    
+    # deploymentProperties + configure orchestrators
+    # print "DEBUG: Deployment description is now: %s" % deployment
+    # Validating the deployment
+    print "Creating a deployment task \n"
+    taskId = xldClient.get_deployment_task_id(deployment)
+    
+    print "Execute task with id: %s" % taskId
+    taskState = xldClient.invoke_task_and_wait_for_result(taskId, pollingInterval, numberOfPollingTrials, continueIfStepFails, numberOfContinueRetrials)
+    
+    if taskState in ('DONE','EXECUTED'):
+        print "Deployment ended in %s \n" % taskState
+        xldClient.archiveTask(taskId)
+        send_email(taskId)
+        sys.exit(0)
+    
+    # rollbackOnError
+    if rollbackOnError and taskState in ('FAILED', 'STOPPED'):
+        print "Going to rollback \n"
+        xldClient.stopTask(taskId)
+        rollBackTaskId = xldClient.deploymentRollback(taskId)
+        taskState = xldClient.invoke_task_and_wait_for_result(rollBackTaskId, pollingInterval, numberOfPollingTrials, continueIfStepFails, numberOfContinueRetrials)
+        xldClient.archiveTask(rollBackTaskId)
+        send_email(taskId=taskId, success=False)
+        sys.exit(1)
+    elif taskState in ('FAILED', 'STOPPED'):
+        print "Task failed, rollback not enabled. \n"
+        xldClient.cancelTask(taskId)
+        send_email(taskId=taskId, success=False)
+        sys.exit(1)
+except Exception:
+    send_email(taskId=None, success=False, attachDetails=False)
